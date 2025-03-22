@@ -191,6 +191,10 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
         else:
             labels = None
             logger.warning("No labels found in examples")
+        
+        # Add labels to the tokenized dictionary if they exist
+        if labels is not None:
+            tokenized["labels"] = torch.tensor(labels)
             
         return tokenized, labels
     
