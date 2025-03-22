@@ -131,6 +131,15 @@ def train(
         
         # Batch training loop
         for batch_idx, batch in enumerate(progress_bar):
+            # Debug: Print batch contents for the first few batches
+            if batch_idx == 0:
+                logger.info(f"First batch contains keys: {batch.keys()}")
+                if "labels" in batch:
+                    logger.info(f"Labels shape: {batch['labels'].shape}")
+                    logger.info(f"Labels sample: {batch['labels'][:5]}")
+                else:
+                    logger.error("ERROR: 'labels' not found in batch!")
+            
             # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
             
@@ -140,6 +149,11 @@ def train(
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
+            
+            # Handle case where loss is None
+            if loss is None:
+                logger.error(f"Loss is None at batch {batch_idx}. Skipping this batch.")
+                continue
             
             # Apply gradient accumulation
             if config.GRADIENT_ACCUMULATION_STEPS > 1:

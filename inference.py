@@ -67,11 +67,12 @@ class NLIPredictor:
         # Set model to evaluation mode
         self.model.eval()
         
-        # Define label map
+        # Define label map for IndoNLI
+        # IndoNLI mapping: entailment (0), neutral (1), contradiction (2)
         self.id_to_label = {
             0: "entailment",
-            1: "contradiction",
-            2: "neutral"
+            1: "neutral",
+            2: "contradiction"
         }
         
         logger.info(f"NLI predictor initialized with model from {self.model_path}")
@@ -117,8 +118,8 @@ class NLIPredictor:
             # Create dictionary mapping labels to probabilities
             probabilities = {
                 "entailment": probs[0],
-                "contradiction": probs[1],
-                "neutral": probs[2]
+                "neutral": probs[1],
+                "contradiction": probs[2]
             }
             
             return pred_label, probabilities
@@ -187,8 +188,8 @@ class NLIPredictor:
                 batch_probabilities = [
                     {
                         "entailment": probs[j][0],
-                        "contradiction": probs[j][1],
-                        "neutral": probs[j][2]
+                        "neutral": probs[j][1],
+                        "contradiction": probs[j][2]
                     }
                     for j in range(len(probs))
                 ]
@@ -237,8 +238,8 @@ class NLIPredictor:
         # Ensure probabilities is not None and is iterable
         if probabilities and isinstance(probabilities, list):
             df["entailment_prob"] = [p["entailment"] for p in probabilities]
-            df["contradiction_prob"] = [p["contradiction"] for p in probabilities]
             df["neutral_prob"] = [p["neutral"] for p in probabilities]
+            df["contradiction_prob"] = [p["contradiction"] for p in probabilities]
         
         # Calculate accuracy if true labels are available
         if label_col is not None and label_col in df.columns:
@@ -282,6 +283,11 @@ def demo():
             "premise": "Mobil balap hitam mulai melaju di depan kerumunan orang.",
             "hypothesis": "Seorang pria sedang mengendarai mobil mahal.",
             "label": "neutral"
+        },
+        {
+            "premise": "Keindahan alam yang terdapat di Gunung Batu Jonggol ini dapat Anda manfaatkan sebagai objek fotografi yang cantik.",
+            "hypothesis": "Keindahan alam tidak dapat difoto.",
+            "label": "contradiction"
         }
     ]
     

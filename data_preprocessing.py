@@ -84,7 +84,7 @@ def load_nli_dataset(dataset_name=None):
             dataset = load_dataset("anli")
         elif dataset_name == "afaji/indonli":
             # Load IndoNLI dataset
-            dataset = load_dataset("afaji/indonli")
+            dataset = load_dataset("afaji/indonli", cache_dir=config.DATA_DIR)
         else:
             # Attempt to load as direct dataset name
             dataset = load_dataset(dataset_name)
@@ -122,13 +122,24 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
         
     logger.info("Preprocessing dataset...")
     
-    # Label mapping for NLI datasets
-    # 0: entailment, 1: contradiction, 2: neutral
-    label_map = {
-        "entailment": 0,
-        "contradiction": 1,
-        "neutral": 2
-    }
+    # Check if we're using IndoNLI
+    using_indonli = config.DATASET_NAME == "afaji/indonli"
+    
+    # For IndoNLI, the mapping is:
+    # entailment (0), neutral (1), contradiction (2)
+    # For other datasets:
+    # entailment (0), contradiction (1), neutral (2)
+    if using_indonli:
+        logger.info("Using IndoNLI label mapping: entailment (0), neutral (1), contradiction (2)")
+        # We don't need a string-to-int mapping for IndoNLI as it already uses integers
+    else:
+        logger.info("Using standard NLI label mapping: entailment (0), contradiction (1), neutral (2)")
+        # Label mapping for standard NLI datasets (SNLI, MNLI, etc)
+        label_map = {
+            "entailment": 0,
+            "contradiction": 1,
+            "neutral": 2
+        }
     
     # Function to tokenize and prepare features
     def prepare_features(examples):
@@ -148,14 +159,21 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
         
         # Map labels to integers
         if "label" in examples:
-            # Filter out examples with invalid labels (-1)
-            if isinstance(examples["label"], list):
-                labels = [
-                    label_map.get(examples["label"][i], 2) if examples["label"][i] != -1 else -1
-                    for i in range(len(examples["label"]))
-                ]
+            if using_indonli:
+                # IndoNLI already has integer labels
+                if isinstance(examples["label"], list):
+                    labels = examples["label"]
+                else:
+                    labels = [examples["label"]]
             else:
-                labels = label_map.get(examples["label"], 2) if examples["label"] != -1 else -1
+                # Map string labels to integers for other datasets
+                if isinstance(examples["label"], list):
+                    labels = [
+                        label_map.get(examples["label"][i], 2) if examples["label"][i] != -1 else -1
+                        for i in range(len(examples["label"]))
+                    ]
+                else:
+                    labels = label_map.get(examples["label"], 2) if examples["label"] != -1 else -1
         else:
             labels = None
             
