@@ -192,9 +192,8 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
             labels = None
             logger.warning("No labels found in examples")
         
-        # Add labels to the tokenized dictionary if they exist
-        if labels is not None:
-            tokenized["labels"] = torch.tensor(labels)
+        # We don't add labels to tokenized here
+        # Let the NLIDataset.__getitem__ method handle it
             
         return tokenized, labels
     
