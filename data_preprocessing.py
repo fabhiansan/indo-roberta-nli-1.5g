@@ -40,9 +40,16 @@ class NLIDataset(Dataset):
         Returns:
             dict: Item at index
         """
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        # Properly create tensors to avoid warning
+        item = {key: val[idx].clone().detach() if isinstance(val[idx], torch.Tensor) else torch.tensor(val[idx]) 
+                for key, val in self.encodings.items()}
+                
         if self.labels is not None:
-            item["labels"] = torch.tensor(self.labels[idx])
+            if isinstance(self.labels[idx], torch.Tensor):
+                item["labels"] = self.labels[idx].clone().detach()
+            else:
+                item["labels"] = torch.tensor(self.labels[idx])
+                
         return item
         
     def __len__(self):
@@ -147,6 +154,11 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
         premises = examples["premise"]
         hypotheses = examples["hypothesis"]
         
+        # Debug: Check label format
+        if "label" in examples:
+            logger.info(f"Label type: {type(examples['label'])}")
+            logger.info(f"First 5 labels: {examples['label'][:5]}")
+
         # Tokenize inputs
         tokenized = tokenizer(
             premises,
@@ -163,8 +175,10 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
                 # IndoNLI already has integer labels
                 if isinstance(examples["label"], list):
                     labels = examples["label"]
+                    logger.info(f"Using label list directly: {labels[:5]}")
                 else:
                     labels = [examples["label"]]
+                    logger.info(f"Created label list from single value: {labels}")
             else:
                 # Map string labels to integers for other datasets
                 if isinstance(examples["label"], list):
@@ -176,6 +190,7 @@ def preprocess_dataset(dataset, tokenizer=None, max_length=None):
                     labels = label_map.get(examples["label"], 2) if examples["label"] != -1 else -1
         else:
             labels = None
+            logger.warning("No labels found in examples")
             
         return tokenized, labels
     

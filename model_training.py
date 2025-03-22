@@ -113,6 +113,10 @@ def train(
     best_val_loss = float('inf')
     best_model_path = os.path.join(config.MODEL_DIR, f"{config.EXPERIMENT_NAME}_best.pt")
     
+    # Count the number of batches with None loss
+    none_loss_count = 0
+    max_none_loss_allowed = 5
+
     # Training loop
     for epoch in range(1, num_epochs + 1):
         logger.info(f"Epoch {epoch}/{num_epochs}")
@@ -125,6 +129,7 @@ def train(
         
         # Initialize batch loss
         train_loss = 0
+        successful_batches = 0
         
         # Progress bar
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch}/{num_epochs} [Training]")
@@ -153,6 +158,26 @@ def train(
             # Handle case where loss is None
             if loss is None:
                 logger.error(f"Loss is None at batch {batch_idx}. Skipping this batch.")
+                none_loss_count += 1
+                
+                # If we encounter too many None losses, we may need to stop training
+                if none_loss_count >= max_none_loss_allowed:
+                    logger.error(f"Encountered {none_loss_count} batches with None loss. This suggests a serious issue with the dataset or model configuration.")
+                    logger.error("Saving current model state and stopping training.")
+                    
+                    # Save current state
+                    emergency_path = os.path.join(config.MODEL_DIR, f"{config.EXPERIMENT_NAME}_emergency_stop.pt")
+                    save_checkpoint(
+                        model=model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        epoch=epoch,
+                        loss=train_loss / max(1, successful_batches),
+                        metrics={"global_step": global_step},
+                        path=emergency_path
+                    )
+                    return model
+                    
                 continue
             
             # Apply gradient accumulation
@@ -164,6 +189,7 @@ def train(
             
             # Track loss
             train_loss += loss.item()
+            successful_batches += 1
             
             # Log batch progress
             progress_bar.set_postfix({
@@ -226,7 +252,7 @@ def train(
                     model.train()
         
         # Calculate average training loss
-        avg_train_loss = train_loss / len(train_dataloader)
+        avg_train_loss = train_loss / successful_batches if successful_batches > 0 else 0
         
         # Evaluation phase
         if val_dataloader is not None:
@@ -291,7 +317,7 @@ def train(
         optimizer=optimizer,
         scheduler=scheduler,
         epoch=num_epochs,
-        loss=train_loss / len(train_dataloader),
+        loss=train_loss / max(1, successful_batches),
         metrics={"global_step": global_step},
         path=final_model_path
     )
@@ -315,6 +341,7 @@ def evaluate(model, dataloader, device):
     
     # Initialize evaluation variables
     eval_loss = 0
+    total_batches = 0
     all_preds = []
     all_labels = []
     
@@ -323,7 +350,16 @@ def evaluate(model, dataloader, device):
     
     # Disable gradient calculation
     with torch.no_grad():
-        for batch in progress_bar:
+        for batch_idx, batch in enumerate(progress_bar):
+            # Debug: Print batch contents for the first few batches
+            if batch_idx == 0:
+                logger.info(f"First validation batch contains keys: {batch.keys()}")
+                if "labels" in batch:
+                    logger.info(f"Validation labels shape: {batch['labels'].shape}")
+                    logger.info(f"Validation labels sample: {batch['labels'][:5]}")
+                else:
+                    logger.error("ERROR: 'labels' not found in validation batch!")
+                    
             # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
             
@@ -331,8 +367,14 @@ def evaluate(model, dataloader, device):
             outputs = model(**batch)
             loss = outputs.loss
             
+            # Handle case where loss is None
+            if loss is None:
+                logger.warning(f"Loss is None at validation batch {batch_idx}. Skipping this batch.")
+                continue
+                
             # Track loss
             eval_loss += loss.item()
+            total_batches += 1
             
             # Get predictions
             logits = outputs.logits
@@ -345,8 +387,8 @@ def evaluate(model, dataloader, device):
             all_preds.extend(preds)
             all_labels.extend(labels)
             
-    # Calculate average loss
-    avg_loss = eval_loss / len(dataloader)
+    # Calculate average loss, avoiding division by zero
+    avg_loss = eval_loss / total_batches if total_batches > 0 else 0
     
     # Calculate metrics
     metrics = compute_metrics(all_preds, all_labels)
